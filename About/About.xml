@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>Xenotype Summary</name>
+  <author>Waggish Pluto</author>
+  <packageId>Zhuma.XenotypeSummary</packageId>
+  <supportedVersions>
+    <li>1.6</li>
+  </supportedVersions>
+  <description>Ever felt lost in the wall of text that is a complex xenotype? Xenotype Summary provides a clean, organized overview of everything a xenotype actually DOES.
+
+Inspired by Mr. Samuel Streamer to help navigate the genetic chaos!
+
+Features:
+- Full Description List: Read all gene descriptions and custom effects in one scrollable list.
+- Aggregated Stats: See total offsets and multipliers for stats, capacities, and damage factors.
+- Breakdown Tooltips: Hover over any aggregated stat to see exactly which genes are contributing to the value.
+- Chemical &amp; Global Factors: Summary of pain, resource loss, and chemical modifiers.
+- Work &amp; Mood: Consolidated list of disabled work types and nullified thoughts.
+- Abilities &amp; Traits: Quick reference for all gained abilities and forced/suppressed traits.
+- Universal Access: Accessible from the Pawn Gene tab, Info Cards, Xenotype Editor, and Gene Assembler.
+
+No more hovering over 50 icons to figure out why your colonist is glowing or why they're suddenly immune to fire. One button, one summary, total clarity.</description>
+
+  <modDependencies>
+    <li>
+      <packageId>brrainz.harmony</packageId>
+      <displayName>LibHarmony</displayName>
+      <downloadUrl>https://github.com/pardeike/HarmonyRimWorld/releases/latest</downloadUrl>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
+    </li>
+    <li>
+      <packageId>ludeon.rimworld.biotech</packageId>
+      <displayName>Biotech</displayName>
+    </li>
+  </modDependencies>
+
+  <loadAfter>
+    <li>Ludeon.RimWorld.Biotech</li>
+    <li>brrainz.harmony</li>
+  </loadAfter>
+</ModMetaData>
