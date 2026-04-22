@@ -13,6 +13,48 @@ namespace XenotypeSummary
         private Vector2 scrollPosDescriptions;
         private Vector2 scrollPosStats;
         private string header;
+        private XenotypeSearchFilter searchFilter = new XenotypeSearchFilter();
+        private float lastSearchChangeTime = -1f;
+        private const float DebounceDelay = 0.3f;
+
+        // Caching
+        private float cachedHeightLeft;
+        private float cachedHeightRight;
+        private List<GeneData> cachedFilteredGenes = new List<GeneData>();
+
+        // Cache structures for stats side
+        private List<XenotypeSummaryGenerator.AptitudeSummary> cachedApts = new List<XenotypeSummaryGenerator.AptitudeSummary>();
+        private List<PassionMod> cachedPassions = new List<PassionMod>();
+        private List<XenotypeSummaryGenerator.StatSummary> cachedStats = new List<XenotypeSummaryGenerator.StatSummary>();
+        private List<XenotypeSummaryGenerator.CapacitySummary> cachedCaps = new List<XenotypeSummaryGenerator.CapacitySummary>();
+        private List<XenotypeSummaryGenerator.DamageSummary> cachedDamage = new List<XenotypeSummaryGenerator.DamageSummary>();
+        private List<Pair<string, string>> cachedGlobalFactors = new List<Pair<string, string>>();
+        private List<ChemicalEffectData> cachedChemicals = new List<ChemicalEffectData>();
+        private List<string> cachedSpecialEffects = new List<string>();
+        private List<NeedDef> cachedGainedNeeds = new List<NeedDef>();
+        private List<NeedDef> cachedDisabledNeeds = new List<NeedDef>();
+        private List<AbilityDef> cachedAbilities = new List<AbilityDef>();
+        private List<GeneticTraitData> cachedForcedTraits = new List<GeneticTraitData>();
+        private List<GeneticTraitData> cachedSuppressedTraits = new List<GeneticTraitData>();
+        private List<ThoughtDef> cachedMoodThoughts = new List<ThoughtDef>();
+        private List<ThoughtDef> cachedNullifiedThoughts = new List<ThoughtDef>();
+
+        private struct GeneData
+        {
+            public GeneDef gene;
+            public string highlightedLabel;
+            public string highlightedDesc;
+            public List<string> highlightedCustomDescs;
+            public float height;
+        }
+
+        private struct ChemicalEffectData
+        {
+            public ChemicalDef chemical;
+            public float overdoseFactor;
+            public float toleranceFactor;
+            public string highlightedLabel;
+        }
 
         public override Vector2 InitialSize => new Vector2(900f, 700f);
 
@@ -30,21 +72,154 @@ namespace XenotypeSummary
         {
             Text.Font = GameFont.Medium;
             Widgets.Label(new Rect(0f, 0f, inRect.width, 35f), header);
+
+            Rect searchRect = new Rect(inRect.width - 240f, 4f, 180f, 24f);
+            searchFilter.DrawSearchBar(searchRect);
+
+            if (searchFilter.isDirty)
+            {
+                if (!searchFilter.Active)
+                {
+                    RecalculateCaches(inRect.width);
+                    lastSearchChangeTime = -1f;
+                }
+                else
+                {
+                    lastSearchChangeTime = Time.time;
+                }
+                searchFilter.isDirty = false;
+            }
+
+            if (lastSearchChangeTime > 0f && Time.time - lastSearchChangeTime > DebounceDelay)
+            {
+                RecalculateCaches(inRect.width);
+                lastSearchChangeTime = -1f;
+            }
+
             Text.Font = GameFont.Small;
 
             Rect contentRect = inRect.AtZero();
-            contentRect.yMin += 40f;
-            contentRect.height -= 40f;
+            contentRect.yMin += 45f;
+            contentRect.height -= 45f;
 
             float colWidth = (contentRect.width - 20f) / 2f;
             Rect leftRect = new Rect(contentRect.x, contentRect.y, colWidth, contentRect.height);
             Rect rightRect = new Rect(contentRect.x + colWidth + 20f, contentRect.y, colWidth, contentRect.height);
 
-            // Left: Descriptions
             DrawDescriptions(leftRect);
-
-            // Right: Stats
             DrawStats(rightRect);
+        }
+
+        private void RecalculateCaches(float totalWidth)
+        {
+            float colWidth = (totalWidth - 20f) / 2f;
+            float innerWidth = colWidth - 20f;
+
+            // Left Side: Genes
+            cachedFilteredGenes.Clear();
+            cachedHeightLeft = 0f;
+            foreach (var gene in summary.allGenes)
+            {
+                if (!searchFilter.GeneMatches(gene)) continue;
+                if (gene.description.NullOrEmpty() && (gene.customEffectDescriptions == null || !gene.customEffectDescriptions.Any())) continue;
+
+                var gd = new GeneData
+                {
+                    gene = gene,
+                    highlightedLabel = searchFilter.Highlight(gene.LabelCap),
+                    highlightedDesc = searchFilter.Highlight(gene.description),
+                    highlightedCustomDescs = gene.customEffectDescriptions?.Select(e => searchFilter.Highlight(e.ResolveTags())).ToList() ?? new List<string>(),
+                    height = 34f
+                };
+
+                if (!gd.highlightedDesc.NullOrEmpty())
+                {
+                    gd.height += Text.CalcHeight(gd.highlightedDesc, innerWidth - 16f) + 2f;
+                }
+
+                foreach (var hcd in gd.highlightedCustomDescs)
+                {
+                    string effectStr = ("XS_Effects".Translate().CapitalizeFirst() + ":").Colorize(ColoredText.TipSectionTitleColor) + $"\n  - {hcd}";
+                    gd.height += Text.CalcHeight(effectStr, innerWidth - 16f) + 2f;
+                }
+
+                gd.height += 15f; // Padding + Line
+                cachedFilteredGenes.Add(gd);
+                cachedHeightLeft += gd.height;
+            }
+
+            // Right Side: Stats side
+            cachedApts = summary.aptitudeSummaries.Values.Where(a => searchFilter.Matches(a.skill.label)).OrderBy(a => a.skill.label).ToList();
+            cachedPassions = summary.passionMods.Where(p => searchFilter.Matches(p.skill.label)).ToList();
+            cachedStats = summary.statSummaries.Values.Where(s => searchFilter.StatMatches(s.stat, "")).OrderBy(s => s.stat.label).ToList();
+            cachedCaps = summary.capacitySummaries.Values.Where(c => searchFilter.Matches(c.capacity.label)).OrderBy(c => c.capacity.label).ToList();
+            cachedDamage = summary.damageSummaries.Values.Where(d => searchFilter.Matches(d.damageDef.label)).OrderBy(d => d.damageDef.label).ToList();
+
+
+            cachedGlobalFactors.Clear();
+            if (summary.totalPainOffset != 0f && searchFilter.Matches("XS_PainOffset".Translate())) cachedGlobalFactors.Add(new Pair<string, string>("XS_PainOffset".Translate(), (summary.totalPainOffset * 100f).ToString("+#;-#") + "%"));
+            if (summary.totalPainFactor != 1f && searchFilter.Matches("XS_PainFactor".Translate())) cachedGlobalFactors.Add(new Pair<string, string>("XS_PainFactor".Translate(), "x" + summary.totalPainFactor.ToStringPercent()));
+            if (summary.totalFoodPoisoningFactor != 1f && searchFilter.Matches("XS_FoodPoisoningChance".Translate())) cachedGlobalFactors.Add(new Pair<string, string>("XS_FoodPoisoningChance".Translate(), "x" + summary.totalFoodPoisoningFactor.ToStringPercent()));
+            if (summary.totalSocialFightFactor != 1f && searchFilter.Matches("XS_SocialFightChance".Translate())) cachedGlobalFactors.Add(new Pair<string, string>("XS_SocialFightChance".Translate(), "x" + summary.totalSocialFightFactor.ToStringPercent()));
+            if (summary.totalAggroMentalBreakFactor != 1f && searchFilter.Matches("XS_AggroMentalBreakChance".Translate())) cachedGlobalFactors.Add(new Pair<string, string>("XS_AggroMentalBreakChance".Translate(), "x" + summary.totalAggroMentalBreakFactor.ToStringPercent()));
+            if (summary.totalPrisonBreakFactor != 1f && searchFilter.Matches("XS_PrisonBreakChance".Translate())) cachedGlobalFactors.Add(new Pair<string, string>("XS_PrisonBreakChance".Translate(), "x" + summary.totalPrisonBreakFactor.ToStringPercent()));
+            if (summary.totalRomanceChanceFactor != 1f && searchFilter.Matches("XS_RomanceChance".Translate())) cachedGlobalFactors.Add(new Pair<string, string>("XS_RomanceChance".Translate(), "x" + summary.totalRomanceChanceFactor.ToStringPercent()));
+            if (summary.totalLovinMTBFactor != 1f && searchFilter.Matches("XS_LovinMTB".Translate())) cachedGlobalFactors.Add(new Pair<string, string>("XS_LovinMTB".Translate(), "x" + summary.totalLovinMTBFactor.ToStringPercent()));
+            if (summary.totalResourceLossPerDay != 0f && searchFilter.Matches("XS_DailyResourceLoss".Translate())) cachedGlobalFactors.Add(new Pair<string, string>("XS_DailyResourceLoss".Translate(), summary.totalResourceLossPerDay.ToString("0.##")));
+
+            cachedChemicals.Clear();
+            var allChems = summary.overdoseFactors.Keys.Union(summary.toleranceFactors.Keys).ToList();
+            foreach (var chem in allChems)
+            {
+                if (searchFilter.Matches(chem.label))
+                {
+                    cachedChemicals.Add(new ChemicalEffectData
+                    {
+                        chemical = chem,
+                        overdoseFactor = summary.overdoseFactors.TryGetValue(chem, 1f),
+                        toleranceFactor = summary.toleranceFactors.TryGetValue(chem, 1f),
+                        highlightedLabel = searchFilter.Highlight(chem.LabelCap)
+                    });
+                }
+            }
+
+            cachedSpecialEffects.Clear();
+            if (summary.toxGasImmunity && searchFilter.Matches("XS_ToxGasImmunity".Translate())) cachedSpecialEffects.Add(searchFilter.Highlight("XS_ToxGasImmunity".Translate()));
+            if (summary.vacuumBurnImmunity && searchFilter.Matches("XS_VacuumBurnImmunity".Translate())) cachedSpecialEffects.Add(searchFilter.Highlight("XS_VacuumBurnImmunity".Translate()));
+            if (summary.ignoreDarkness && searchFilter.Matches("XS_IgnoreDarkness".Translate())) cachedSpecialEffects.Add(searchFilter.Highlight("XS_IgnoreDarkness".Translate()));
+            if (summary.sterilize && searchFilter.Matches("XS_Sterilized".Translate())) cachedSpecialEffects.Add(searchFilter.Highlight("XS_Sterilized".Translate()));
+            if (summary.preventPermanentWounds && searchFilter.Matches("XS_PreventPermanentWounds".Translate())) cachedSpecialEffects.Add(searchFilter.Highlight("XS_PreventPermanentWounds".Translate()));
+            if (summary.dontMindRawFood && searchFilter.Matches("XS_DontMindRawFood".Translate())) cachedSpecialEffects.Add(searchFilter.Highlight("XS_DontMindRawFood".Translate()));
+            foreach (var h in summary.immunityHediffs) if (searchFilter.Matches(h.label)) cachedSpecialEffects.Add(searchFilter.Highlight("XS_ImmuneTo".Translate(h.LabelCap)));
+            foreach (var h in summary.cannotGiveHediffs) if (searchFilter.Matches(h.label)) cachedSpecialEffects.Add(searchFilter.Highlight("XS_CausesImmunityTo".Translate(h.LabelCap)));
+
+            cachedGainedNeeds = summary.gainedNeeds.Where(n => searchFilter.Matches(n.label)).ToList();
+            cachedDisabledNeeds = summary.disabledNeeds.Where(n => searchFilter.Matches(n.label)).ToList();
+            cachedAbilities = summary.abilities.Where(a => searchFilter.AbilityMatches(a)).ToList();
+            cachedForcedTraits = summary.forcedTraits.Where(t => searchFilter.Matches(t.def.label)).ToList();
+            cachedSuppressedTraits = summary.suppressedTraits.Where(t => searchFilter.Matches(t.def.label)).ToList();
+            cachedMoodThoughts = summary.moodEffects.Keys.Where(t => searchFilter.Matches(t.label)).ToList();
+            cachedNullifiedThoughts = summary.nullifiedThoughts.Keys.Where(t => searchFilter.Matches(t.label)).ToList();
+
+            // Calculate Right Height
+            float bioHeight = BiostatsTable.HeightForBiostats(summary.totalArc);
+            cachedHeightRight = bioHeight + 15f;
+            if (cachedApts.Any()) cachedHeightRight += 24f + (cachedApts.Count * 26f) + 10f;
+            if (cachedPassions.Any()) cachedHeightRight += 24f + (cachedPassions.Count * 22f) + 10f;
+            if (cachedStats.Any()) cachedHeightRight += 24f + (cachedStats.Count * 28f) + 10f;
+            if (cachedCaps.Any()) cachedHeightRight += 24f + (cachedCaps.Count * 26f) + 10f;
+            if (cachedDamage.Any()) cachedHeightRight += 24f + (cachedDamage.Count * 26f) + 10f;
+            if (cachedGlobalFactors.Any()) cachedHeightRight += 24f + (cachedGlobalFactors.Count * 26f) + 10f;
+            if (cachedChemicals.Any()) cachedHeightRight += 24f + (cachedChemicals.Count * 26f) + 10f;
+            if (cachedSpecialEffects.Any()) cachedHeightRight += 24f + (cachedSpecialEffects.Count * 20f) + 10f;
+            if (cachedGainedNeeds.Any() || cachedDisabledNeeds.Any()) cachedHeightRight += 24f + (cachedGainedNeeds.Count + cachedDisabledNeeds.Count) * 20f + 10f;
+            if (cachedAbilities.Any()) cachedHeightRight += 24f + (cachedAbilities.Count * 24f) + 10f;
+            if (cachedForcedTraits.Any() || cachedSuppressedTraits.Any()) cachedHeightRight += 24f + (cachedForcedTraits.Count + cachedSuppressedTraits.Count) * 26f + 10f;
+            if (summary.disabledWorkTags != WorkTags.None && searchFilter.Matches("XS_Disabled".Translate())) cachedHeightRight += 24f + 26f + 10f;
+            if (cachedMoodThoughts.Any() || cachedNullifiedThoughts.Any()) cachedHeightRight += 24f + (cachedMoodThoughts.Count + cachedNullifiedThoughts.Count) * 26f + 10f;
+
+
+            cachedHeightRight += 40f;
         }
 
         private void DrawDescriptions(Rect rect)
@@ -52,84 +227,50 @@ namespace XenotypeSummary
             Widgets.DrawMenuSection(rect);
             Rect innerRect = rect.ContractedBy(10f);
 
-
-            float height = 0f;
-            foreach (var gene in summary.allGenes)
-            {
-                if (gene.description.NullOrEmpty() && (gene.customEffectDescriptions == null || !gene.customEffectDescriptions.Any())) continue;
-
-
-                height += 34f; // Header height
-                height += Text.CalcHeight(gene.description, innerRect.width) + 5f;
-                if (gene.customEffectDescriptions != null)
-                {
-                    foreach (var effect in gene.customEffectDescriptions)
-                        height += Text.CalcHeight("XS_Effects".Translate().CapitalizeFirst() + ": \n" + effect, innerRect.width) + 2f;
-                }
-                height += 15f; // Padding + Line
-            }
-
-            Rect viewRect = new Rect(0f, 0f, innerRect.width - 16f, height);
+            Rect viewRect = new Rect(0f, 0f, innerRect.width - 16f, cachedHeightLeft);
             Widgets.BeginScrollView(innerRect, ref scrollPosDescriptions, viewRect);
 
-
             float curY = 0f;
-            foreach (var gene in summary.allGenes)
+            foreach (var gd in cachedFilteredGenes)
             {
-                bool hasMainDesc = !gene.description.NullOrEmpty();
-                bool hasCustomDescs = gene.customEffectDescriptions != null && gene.customEffectDescriptions.Any();
-                if (!hasMainDesc && !hasCustomDescs) continue;
-
-                bool isOverridden = summary.overriddenGenes.Contains(gene);
+                bool isOverridden = summary.overriddenGenes.Contains(gd.gene);
                 Rect headerRect = new Rect(0f, curY, viewRect.width, 32f);
-
-                // Interaction + Highlight
 
                 if (Mouse.IsOver(headerRect)) Widgets.DrawHighlight(headerRect);
                 if (Widgets.ButtonInvisible(headerRect))
                 {
-                    Find.WindowStack.Add(new Dialog_InfoCard(gene));
+                    Find.WindowStack.Add(new Dialog_InfoCard(gd.gene));
                 }
-
-                // Gene Icon
 
                 Rect iconRect = new Rect(headerRect.x, headerRect.y, 32f, 32f);
                 if (isOverridden) GUI.color = new Color(0.5f, 0.5f, 0.5f, 0.5f);
-                else GUI.color = gene.IconColor;
-                GUI.DrawTexture(iconRect, gene.Icon);
+                else GUI.color = gd.gene.IconColor;
+                GUI.DrawTexture(iconRect, gd.gene.Icon);
                 GUI.color = Color.white;
-
-                // Gene Name
 
                 Text.Font = GameFont.Small;
                 Text.Anchor = TextAnchor.MiddleLeft;
-                string label = "<b>" + gene.LabelCap + "</b>";
+                string label = "<b>" + gd.highlightedLabel + "</b>";
                 if (isOverridden) label = (label + " (" + "XS_Suppressed".Translate() + ")").Colorize(ColorLibrary.RedReadable);
                 Widgets.Label(new Rect(iconRect.xMax + 5f, headerRect.y, headerRect.width - iconRect.width - 5f, headerRect.height), label);
                 Text.Anchor = TextAnchor.UpperLeft;
 
-
                 curY += 34f;
 
-                // Description
                 GUI.color = isOverridden ? new Color(0.8f, 0.8f, 0.8f, 0.6f) : Color.white;
-                if (hasMainDesc)
+                if (!gd.highlightedDesc.NullOrEmpty())
                 {
-                    float h = Text.CalcHeight(gene.description, viewRect.width);
-                    Widgets.Label(new Rect(5f, curY, viewRect.width - 5f, h), gene.description);
+                    float h = Text.CalcHeight(gd.highlightedDesc, viewRect.width);
+                    Widgets.Label(new Rect(5f, curY, viewRect.width - 5f, h), gd.highlightedDesc);
                     curY += h + 2f;
                 }
 
-
-                if (hasCustomDescs)
+                foreach (var hcd in gd.highlightedCustomDescs)
                 {
-                    foreach (var effect in gene.customEffectDescriptions)
-                    {
-                        string effectStr = ("XS_Effects".Translate().CapitalizeFirst() + ":").Colorize(ColoredText.TipSectionTitleColor) + $"\n  - {effect.ResolveTags()}";
-                        float h = Text.CalcHeight(effectStr, viewRect.width);
-                        Widgets.Label(new Rect(5f, curY, viewRect.width - 5f, h), effectStr);
-                        curY += h + 2f;
-                    }
+                    string effectStr = ("XS_Effects".Translate().CapitalizeFirst() + ":").Colorize(ColoredText.TipSectionTitleColor) + $"\n  - {hcd}";
+                    float h = Text.CalcHeight(effectStr, viewRect.width);
+                    Widgets.Label(new Rect(5f, curY, viewRect.width - 5f, h), effectStr);
+                    curY += h + 2f;
                 }
                 GUI.color = Color.white;
 
@@ -146,100 +287,49 @@ namespace XenotypeSummary
             Widgets.DrawMenuSection(rect);
             Rect innerRect = rect.ContractedBy(10f);
 
-            float bioHeight = BiostatsTable.HeightForBiostats(summary.totalArc);
-            float height = bioHeight + 15f;
-
-
-            if (summary.aptitudeSummaries.Any()) height += 24f + (summary.aptitudeSummaries.Count * 26f) + 10f;
-            if (summary.passionMods.Any()) height += 24f + (summary.passionMods.Count * 22f) + 10f;
-            if (summary.statSummaries.Any()) height += 24f + (summary.statSummaries.Count * 28f) + 10f;
-            if (summary.capacitySummaries.Any()) height += 24f + (summary.capacitySummaries.Count * 26f) + 10f;
-            if (summary.damageSummaries.Any()) height += 24f + (summary.damageSummaries.Count * 26f) + 10f;
-
-
-            int globalLines = 0;
-            if (summary.totalPainOffset != 0f) globalLines++;
-            if (summary.totalPainFactor != 1f) globalLines++;
-            if (summary.totalFoodPoisoningFactor != 1f) globalLines++;
-            if (summary.totalSocialFightFactor != 1f) globalLines++;
-            if (summary.totalAggroMentalBreakFactor != 1f) globalLines++;
-            if (summary.totalPrisonBreakFactor != 1f) globalLines++;
-            if (summary.totalRomanceChanceFactor != 1f) globalLines++;
-            if (summary.totalLovinMTBFactor != 1f) globalLines++;
-            if (summary.totalResourceLossPerDay != 0f) globalLines++;
-            if (globalLines > 0) height += 24f + (globalLines * 26f) + 10f;
-
-            if (summary.overdoseFactors.Any() || summary.toleranceFactors.Any())
-                height += 24f + (summary.overdoseFactors.Count + summary.toleranceFactors.Count) * 26f + 10f;
-
-            int specialCount = 0;
-            if (summary.toxGasImmunity) specialCount++;
-            if (summary.vacuumBurnImmunity) specialCount++;
-            if (summary.ignoreDarkness) specialCount++;
-            if (summary.sterilize) specialCount++;
-            if (summary.preventPermanentWounds) specialCount++;
-            if (summary.dontMindRawFood) specialCount++;
-            specialCount += summary.immunityHediffs.Count;
-            specialCount += summary.cannotGiveHediffs.Count;
-            if (specialCount > 0) height += 24f + (specialCount * 20f) + 10f;
-
-            if (summary.gainedNeeds.Any() || summary.disabledNeeds.Any())
-                height += 24f + (summary.gainedNeeds.Count + summary.disabledNeeds.Count) * 20f + 10f;
-
-            if (summary.abilities.Any()) height += 24f + (summary.abilities.Count * 24f) + 10f;
-            if (summary.forcedTraits.Any() || summary.suppressedTraits.Any())
-                height += 24f + (summary.forcedTraits.Count + summary.suppressedTraits.Count) * 26f + 10f;
-
-
-            if (summary.disabledWorkTags != WorkTags.None) height += 24f + 26f + 10f;
-
-            if (summary.moodEffects.Any() || summary.nullifiedThoughts.Any())
-                height += 24f + (summary.moodEffects.Count + summary.nullifiedThoughts.Count) * 26f + 10f;
-
-            height += 40f; // Final padding
-
-            Rect viewRect = new Rect(0f, 0f, innerRect.width - 16f, height);
+            Rect viewRect = new Rect(0f, 0f, innerRect.width - 16f, cachedHeightRight);
             Widgets.BeginScrollView(innerRect, ref scrollPosStats, viewRect);
 
             float curY = 0f;
 
             // Biostats
+            float bioHeight = BiostatsTable.HeightForBiostats(summary.totalArc);
             BiostatsTable.Draw(new Rect(0f, curY, viewRect.width, bioHeight), summary.totalCpx, summary.totalMet, summary.totalArc, false, false, -1);
             curY += bioHeight + 15f;
 
-            // Aptitudes (Skills)
-            if (summary.aptitudeSummaries.Any())
+            // Aptitudes
+            if (cachedApts.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_Aptitudes".Translate() + "</b>");
                 curY += 24f;
-                foreach (var apt in summary.aptitudeSummaries.Values.OrderBy(a => a.skill.label))
+                foreach (var apt in cachedApts)
                 {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), apt.skill.LabelCap, (apt.FinalLevel > 0 ? "+" : "") + apt.FinalLevel, GetSkillTooltip(apt));
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight(apt.skill.LabelCap), (apt.FinalLevel > 0 ? "+" : "") + apt.FinalLevel, GetSkillTooltip(apt));
                     curY += 26f;
                 }
                 curY += 10f;
             }
 
             // Passions
-            if (summary.passionMods.Any())
+            if (cachedPassions.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_Passions".Translate() + "</b>");
                 curY += 24f;
-                foreach (var pm in summary.passionMods)
+                foreach (var pm in cachedPassions)
                 {
                     string label = (pm.modType == PassionMod.PassionModType.AddOneLevel) ? "XS_PassionAdd".Translate() : "XS_PassionRemove".Translate();
-                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + pm.skill.LabelCap + ": " + label);
+                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + searchFilter.Highlight(pm.skill.LabelCap) + ": " + label);
                     curY += 22f;
                 }
                 curY += 10f;
             }
 
             // Stats
-            if (summary.statSummaries.Any())
+            if (cachedStats.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_StatModifiers".Translate() + "</b>");
                 curY += 24f;
-                foreach (var ss in summary.statSummaries.Values.OrderBy(s => s.stat.label))
+                foreach (var ss in cachedStats)
                 {
                     string valueStr = "";
                     if (ss.FinalOffset != 0) valueStr += (ss.FinalOffset > 0 ? "+" : "") + ss.stat.ValueToString(ss.FinalOffset, ss.stat.toStringNumberSense);
@@ -249,18 +339,18 @@ namespace XenotypeSummary
                         valueStr += "x" + ss.FinalFactor.ToStringPercent();
                     }
 
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 26f), ss.stat.LabelCap, valueStr, GetStatTooltip(ss));
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 26f), searchFilter.Highlight(ss.stat.LabelCap), valueStr, GetStatTooltip(ss));
                     curY += 28f;
                 }
                 curY += 10f;
             }
 
             // Capacities
-            if (summary.capacitySummaries.Any())
+            if (cachedCaps.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_Capacities".Translate() + "</b>");
                 curY += 24f;
-                foreach (var cs in summary.capacitySummaries.Values.OrderBy(c => c.capacity.label))
+                foreach (var cs in cachedCaps)
                 {
                     string valStr = "";
                     if (cs.FinalOffset != 0f) valStr += (cs.FinalOffset > 0 ? "+" : "") + cs.FinalOffset.ToStringPercent();
@@ -275,136 +365,105 @@ namespace XenotypeSummary
                         valStr += "max " + cs.FinalMax.Value.ToStringPercent();
                     }
 
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), cs.capacity.LabelCap, valStr, GetCapacityTooltip(cs));
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight(cs.capacity.LabelCap), valStr, GetCapacityTooltip(cs));
                     curY += 26f;
                 }
                 curY += 10f;
             }
 
             // Damage Factors
-            if (summary.damageSummaries.Any())
+            if (cachedDamage.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_DamageFactors".Translate() + "</b>");
                 curY += 24f;
-                foreach (var ds in summary.damageSummaries.Values.OrderBy(d => d.damageDef.label))
+                foreach (var ds in cachedDamage)
                 {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), "XS_DamageUnit".Translate(ds.damageDef.LabelCap), "x" + ds.FinalFactor.ToStringPercent(), ds.damageDef.description);
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight("XS_DamageUnit".Translate(ds.damageDef.LabelCap)), "x" + ds.FinalFactor.ToStringPercent(), ds.damageDef.description);
                     curY += 26f;
                 }
                 curY += 10f;
             }
 
             // Global Factors
-            var globalFactorLines = new List<Pair<string, string>>();
-            if (summary.totalPainOffset != 0f) globalFactorLines.Add(new Pair<string, string>("XS_PainOffset".Translate(), (summary.totalPainOffset * 100f).ToString("+#;-#") + "%"));
-            if (summary.totalPainFactor != 1f) globalFactorLines.Add(new Pair<string, string>("XS_PainFactor".Translate(), "x" + summary.totalPainFactor.ToStringPercent()));
-            if (summary.totalFoodPoisoningFactor != 1f) globalFactorLines.Add(new Pair<string, string>("XS_FoodPoisoningChance".Translate(), "x" + summary.totalFoodPoisoningFactor.ToStringPercent()));
-            if (summary.totalSocialFightFactor != 1f) globalFactorLines.Add(new Pair<string, string>("XS_SocialFightChance".Translate(), "x" + summary.totalSocialFightFactor.ToStringPercent()));
-            if (summary.totalAggroMentalBreakFactor != 1f) globalFactorLines.Add(new Pair<string, string>("XS_AggroMentalBreakChance".Translate(), "x" + summary.totalAggroMentalBreakFactor.ToStringPercent()));
-            if (summary.totalPrisonBreakFactor != 1f) globalFactorLines.Add(new Pair<string, string>("XS_PrisonBreakChance".Translate(), "x" + summary.totalPrisonBreakFactor.ToStringPercent()));
-            if (summary.totalRomanceChanceFactor != 1f) globalFactorLines.Add(new Pair<string, string>("XS_RomanceChance".Translate(), "x" + summary.totalRomanceChanceFactor.ToStringPercent()));
-            if (summary.totalLovinMTBFactor != 1f) globalFactorLines.Add(new Pair<string, string>("XS_LovinMTB".Translate(), "x" + summary.totalLovinMTBFactor.ToStringPercent()));
-            if (summary.totalResourceLossPerDay != 0f) globalFactorLines.Add(new Pair<string, string>("XS_DailyResourceLoss".Translate(), summary.totalResourceLossPerDay.ToString("0.##")));
-
-            if (globalFactorLines.Any())
+            if (cachedGlobalFactors.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_GlobalFactors".Translate() + "</b>");
                 curY += 24f;
-                foreach (var line in globalFactorLines)
+                foreach (var line in cachedGlobalFactors)
                 {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), line.First, line.Second);
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight(line.First), line.Second);
                     curY += 26f;
                 }
                 curY += 10f;
             }
 
-            // Chemical Effects
-            if (summary.overdoseFactors.Any() || summary.toleranceFactors.Any())
+            // Chemicals
+            if (cachedChemicals.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_ChemicalEffects".Translate() + "</b>");
                 curY += 24f;
-                foreach (var kvp in summary.overdoseFactors)
+                foreach (var chem in cachedChemicals)
                 {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), "XS_OverdoseChance".Translate(kvp.Key.LabelCap), "x" + kvp.Value.ToStringPercent());
-                    curY += 26f;
-                }
-                foreach (var kvp in summary.toleranceFactors)
-                {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), "XS_ToleranceBuildup".Translate(kvp.Key.LabelCap), "x" + kvp.Value.ToStringPercent());
-                    curY += 26f;
+                    if (chem.overdoseFactor != 1f)
+                    {
+                        DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), "XS_OverdoseChance".Translate(chem.highlightedLabel), "x" + chem.overdoseFactor.ToStringPercent());
+                        curY += 26f;
+                    }
+                    if (chem.toleranceFactor != 1f)
+                    {
+                        DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), "XS_ToleranceBuildup".Translate(chem.highlightedLabel), "x" + chem.toleranceFactor.ToStringPercent());
+                        curY += 26f;
+                    }
                 }
                 curY += 10f;
             }
 
-            // Special Effects / Immunities
-            int specialCountRecap = 0;
-            if (summary.toxGasImmunity) specialCountRecap++;
-            if (summary.vacuumBurnImmunity) specialCountRecap++;
-            if (summary.ignoreDarkness) specialCountRecap++;
-            if (summary.sterilize) specialCountRecap++;
-            if (summary.preventPermanentWounds) specialCountRecap++;
-            if (summary.dontMindRawFood) specialCountRecap++;
-            specialCountRecap += summary.immunityHediffs.Count;
-
-            if (specialCountRecap > 0 || summary.cannotGiveHediffs.Any())
+            // Special Effects
+            if (cachedSpecialEffects.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_SpecialEffects".Translate() + "</b>");
                 curY += 24f;
-                if (summary.toxGasImmunity) { Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_ToxGasImmunity".Translate()); curY += 20f; }
-                if (summary.vacuumBurnImmunity) { Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_VacuumBurnImmunity".Translate()); curY += 20f; }
-                if (summary.ignoreDarkness) { Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_IgnoreDarkness".Translate()); curY += 20f; }
-                if (summary.sterilize) { Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_Sterilized".Translate()); curY += 20f; }
-                if (summary.preventPermanentWounds) { Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_PreventPermanentWounds".Translate()); curY += 20f; }
-                if (summary.dontMindRawFood) { Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_DontMindRawFood".Translate()); curY += 20f; }
-                foreach (var h in summary.immunityHediffs)
+                foreach (var effect in cachedSpecialEffects)
                 {
-                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_ImmuneTo".Translate(h.LabelCap));
-                    curY += 20f;
-                }
-                foreach (var h in summary.cannotGiveHediffs)
-                {
-                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_CausesImmunityTo".Translate(h.LabelCap));
+                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + effect);
                     curY += 20f;
                 }
                 curY += 10f;
             }
 
             // Needs
-            if (summary.gainedNeeds.Any() || summary.disabledNeeds.Any())
+            if (cachedGainedNeeds.Any() || cachedDisabledNeeds.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_NeedsAndConditions".Translate() + "</b>");
                 curY += 24f;
-                foreach (var n in summary.gainedNeeds)
+                foreach (var n in cachedGainedNeeds)
                 {
-                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_AddsNeed".Translate(n.LabelCap));
+                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + searchFilter.Highlight("XS_AddsNeed".Translate(n.LabelCap)));
                     curY += 20f;
                 }
-                foreach (var n in summary.disabledNeeds)
+                foreach (var n in cachedDisabledNeeds)
                 {
-                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + "XS_DisablesNeed".Translate(n.LabelCap));
+                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + searchFilter.Highlight("XS_DisablesNeed".Translate(n.LabelCap)));
                     curY += 20f;
                 }
                 curY += 10f;
             }
 
             // Abilities
-            if (summary.abilities.Any())
+            if (cachedAbilities.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_GainedAbilities".Translate() + "</b>");
                 curY += 24f;
-                foreach (var ab in summary.abilities)
+                foreach (var ab in cachedAbilities)
                 {
                     Rect r = new Rect(0f, curY, viewRect.width, 24f);
                     if (Mouse.IsOver(r)) Widgets.DrawHighlight(r);
 
-
                     Rect iconR = new Rect(r.x, r.y, 22f, 22f);
                     GUI.DrawTexture(iconR, ab.uiIcon);
 
-
                     Rect labelR = new Rect(iconR.xMax + 5f, r.y, r.width - iconR.width - 5f, r.height);
-                    Widgets.Label(labelR, ab.LabelCap);
-
+                    Widgets.Label(labelR, searchFilter.Highlight(ab.LabelCap));
 
                     if (Widgets.ButtonInvisible(r))
                     {
@@ -417,60 +476,59 @@ namespace XenotypeSummary
             }
 
             // Traits
-            if (summary.forcedTraits.Any() || summary.suppressedTraits.Any())
+            if (cachedForcedTraits.Any() || cachedSuppressedTraits.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_Traits".Translate() + "</b>");
                 curY += 24f;
-                foreach (var trData in summary.forcedTraits)
+                foreach (var trData in cachedForcedTraits)
                 {
                     Rect r = new Rect(0f, curY, viewRect.width, 24f);
-
                     if (Mouse.IsOver(r)) Widgets.DrawHighlight(r);
 
-
                     string label = trData.def.DataAtDegree(trData.degree).label;
-                    Widgets.Label(r, " - " + "XS_Forced".Translate(label.CapitalizeFirst()));
+                    Widgets.Label(r, " - " + searchFilter.Highlight("XS_Forced".Translate(label.CapitalizeFirst())));
                     TooltipHandler.TipRegion(r, trData.def.DataAtDegree(trData.degree).description);
                     curY += 26f;
                 }
-                foreach (var trData in summary.suppressedTraits)
+                foreach (var trData in cachedSuppressedTraits)
                 {
                     Rect r = new Rect(0f, curY, viewRect.width, 24f);
-
                     if (Mouse.IsOver(r)) Widgets.DrawHighlight(r);
 
                     string label = trData.def.DataAtDegree(trData.degree).label;
-                    Widgets.Label(r, " - " + "XS_SuppressedTrait".Translate(label.CapitalizeFirst()));
+                    Widgets.Label(r, " - " + searchFilter.Highlight("XS_SuppressedTrait".Translate(label.CapitalizeFirst())));
                     TooltipHandler.TipRegion(r, trData.def.DataAtDegree(trData.degree).description);
                     curY += 26f;
                 }
                 curY += 10f;
             }
 
-            // Work Limitations
-            if (summary.disabledWorkTags != WorkTags.None)
+            // Work
+            if (summary.disabledWorkTags != WorkTags.None && searchFilter.Matches("XS_Disabled".Translate()))
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_WorkLimitations".Translate() + "</b>");
                 curY += 24f;
                 string workLabel = summary.disabledWorkTags.LabelTranslated().CapitalizeFirst();
-                Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), " - " + "XS_Disabled".Translate(workLabel));
+                Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), " - " + searchFilter.Highlight("XS_Disabled".Translate(workLabel)));
                 curY += 26f;
                 curY += 10f;
             }
 
-            // Mood & Thoughts
-            if (summary.moodEffects.Any() || summary.nullifiedThoughts.Any())
+            // Mood
+            if (cachedMoodThoughts.Any() || cachedNullifiedThoughts.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_MoodAndThoughts".Translate() + "</b>");
                 curY += 24f;
-                foreach (var kvp in summary.moodEffects)
+                foreach (var def in cachedMoodThoughts)
                 {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), " - " + "XS_Required".Translate(kvp.Key.LabelCap), kvp.Value.ToStringWithSign("0.##"), kvp.Key.description);
+                    float val = summary.moodEffects[def];
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), " - " + searchFilter.Highlight("XS_Required".Translate(def.LabelCap)), val.ToStringWithSign("0.##"), def.description);
                     curY += 26f;
                 }
-                foreach (var kvp in summary.nullifiedThoughts)
+                foreach (var def in cachedNullifiedThoughts)
                 {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), " - " + "XS_Removes".Translate(kvp.Key.LabelCap), kvp.Value, kvp.Key.description);
+                    string val = summary.nullifiedThoughts[def];
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), " - " + searchFilter.Highlight("XS_Removes".Translate(def.LabelCap)), val, def.description);
                     curY += 26f;
                 }
                 curY += 10f;
