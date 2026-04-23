@@ -25,23 +25,48 @@ namespace XenotypeSummary
     {
         public static void Postfix(Rect rect, Thing target, GeneSet pregnancyGenes)
         {
+            // Only draw here if NOT in dev mode. In dev mode, we use the DoDebugButton patch to avoid overlapping with other mods.
+            if (Prefs.DevMode) return;
+
             float x = rect.xMax - 140f - 40f;
-            if (Prefs.DevMode) x -= 105f;
-
-
             Rect buttonRect = new Rect(x, 5f, 140f, 24f);
 
             if (Widgets.ButtonText(buttonRect, "XS_Summary".Translate(), true, true, true))
             {
-                IEnumerable<GeneDef> genes = GetGenes(target, pregnancyGenes);
-                IEnumerable<GeneDef> overridden = GetOverridden(target);
+                PatchUtility.OpenSummary(target, pregnancyGenes);
+            }
+        }
+    }
 
+    [HarmonyPatch(typeof(GeneUIUtility), "DoDebugButton")]
+    public static class Patch_GeneUIUtility_DoDebugButton
+    {
+        public static void Postfix(ref Rect buttonRect, Thing target, GeneSet genesOverride)
+        {
+            // Participate in the ref Rect shifting to avoid overlapping with B&S and other mods
+            float width = 115f;
 
-                if (genes.Any())
-                {
-                    string label = (target as Pawn)?.LabelShortCap ?? (target as GeneSetHolderBase)?.LabelCap ?? "XS_Xenotype".Translate();
-                    Find.WindowStack.Add(new Window_XenotypeSummary(genes, "XS_SummaryOf".Translate(label), overridden));
-                }
+            buttonRect.x -= width + 10f;
+            Rect myRect = new Rect(buttonRect.x, buttonRect.y, width, buttonRect.height);
+
+            if (Widgets.ButtonText(myRect, "XS_SummaryShort".Translate(), true, true, true))
+            {
+                PatchUtility.OpenSummary(target, genesOverride);
+            }
+        }
+    }
+
+    public static partial class PatchUtility
+    {
+        public static void OpenSummary(Thing target, GeneSet pregnancyGenes)
+        {
+            IEnumerable<GeneDef> genes = GetGenes(target, pregnancyGenes);
+            IEnumerable<GeneDef> overridden = GetOverridden(target);
+
+            if (genes.Any())
+            {
+                string label = (target as Pawn)?.LabelShortCap ?? (target as GeneSetHolderBase)?.LabelCap ?? "XS_Xenotype".Translate();
+                Find.WindowStack.Add(new Window_XenotypeSummary(genes, "XS_SummaryOf".Translate(label), overridden));
             }
         }
 

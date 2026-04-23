@@ -25,7 +25,7 @@ namespace XenotypeSummary
         // Cache structures for stats side
         private List<XenotypeSummaryGenerator.AptitudeSummary> cachedApts = new List<XenotypeSummaryGenerator.AptitudeSummary>();
         private List<PassionMod> cachedPassions = new List<PassionMod>();
-        private List<XenotypeSummaryGenerator.StatSummary> cachedStats = new List<XenotypeSummaryGenerator.StatSummary>();
+        private List<Pair<StatCategoryDef, List<XenotypeSummaryGenerator.StatSummary>>> cachedStatCategories = new List<Pair<StatCategoryDef, List<XenotypeSummaryGenerator.StatSummary>>>();
         private List<XenotypeSummaryGenerator.CapacitySummary> cachedCaps = new List<XenotypeSummaryGenerator.CapacitySummary>();
         private List<XenotypeSummaryGenerator.DamageSummary> cachedDamage = new List<XenotypeSummaryGenerator.DamageSummary>();
         private List<Pair<string, string>> cachedGlobalFactors = new List<Pair<string, string>>();
@@ -151,7 +151,20 @@ namespace XenotypeSummary
             // Right Side: Stats side
             cachedApts = summary.aptitudeSummaries.Values.Where(a => searchFilter.Matches(a.skill.label)).OrderBy(a => a.skill.label).ToList();
             cachedPassions = summary.passionMods.Where(p => searchFilter.Matches(p.skill.label)).ToList();
-            cachedStats = summary.statSummaries.Values.Where(s => searchFilter.StatMatches(s.stat, "")).OrderBy(s => s.stat.label).ToList();
+
+            // Group stats by category
+            cachedStatCategories.Clear();
+            var groupedStats = summary.statSummaries.Values
+                .Where(s => searchFilter.StatMatches(s.stat, ""))
+                .GroupBy(s => s.stat.category.LabelCap.ToString())
+                .OrderBy(g => g.First().stat.category.displayOrder);
+
+
+            foreach (var group in groupedStats)
+            {
+                cachedStatCategories.Add(new Pair<StatCategoryDef, List<XenotypeSummaryGenerator.StatSummary>>(group.First().stat.category, group.OrderBy(s => s.stat.label).ToList()));
+            }
+
             cachedCaps = summary.capacitySummaries.Values.Where(c => searchFilter.Matches(c.capacity.label)).OrderBy(c => c.capacity.label).ToList();
             cachedDamage = summary.damageSummaries.Values.Where(d => searchFilter.Matches(d.damageDef.label)).OrderBy(d => d.damageDef.label).ToList();
 
@@ -206,7 +219,16 @@ namespace XenotypeSummary
             cachedHeightRight = bioHeight + 15f;
             if (cachedApts.Any()) cachedHeightRight += 24f + (cachedApts.Count * 26f) + 10f;
             if (cachedPassions.Any()) cachedHeightRight += 24f + (cachedPassions.Count * 22f) + 10f;
-            if (cachedStats.Any()) cachedHeightRight += 24f + (cachedStats.Count * 28f) + 10f;
+
+
+            if (cachedStatCategories.Any())
+            {
+                cachedHeightRight += 24f;
+                foreach (var cat in cachedStatCategories)
+                    cachedHeightRight += 24f + (cat.Second.Count * 28f) + 5f;
+                cachedHeightRight += 10f;
+            }
+
             if (cachedCaps.Any()) cachedHeightRight += 24f + (cachedCaps.Count * 26f) + 10f;
             if (cachedDamage.Any()) cachedHeightRight += 24f + (cachedDamage.Count * 26f) + 10f;
             if (cachedGlobalFactors.Any()) cachedHeightRight += 24f + (cachedGlobalFactors.Count * 26f) + 10f;
@@ -304,7 +326,7 @@ namespace XenotypeSummary
                 curY += 24f;
                 foreach (var apt in cachedApts)
                 {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight(apt.skill.LabelCap), (apt.FinalLevel > 0 ? "+" : "") + apt.FinalLevel, GetSkillTooltip(apt));
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight(apt.skill.LabelCap), (apt.FinalLevel > 0 ? "+" : "") + apt.FinalLevel, GetSkillTooltip(apt), 15f);
                     curY += 26f;
                 }
                 curY += 10f;
@@ -318,29 +340,40 @@ namespace XenotypeSummary
                 foreach (var pm in cachedPassions)
                 {
                     string label = (pm.modType == PassionMod.PassionModType.AddOneLevel) ? "XS_PassionAdd".Translate() : "XS_PassionRemove".Translate();
-                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + searchFilter.Highlight(pm.skill.LabelCap) + ": " + label);
+                    Rect r = new Rect(0f, curY, viewRect.width, 20f);
+                    if (Mouse.IsOver(r)) Widgets.DrawHighlight(r);
+                    GUI.color = new Color(0.9f, 0.9f, 0.9f);
+                    Widgets.Label(new Rect(15f, r.y, r.width * 0.4f, r.height), " - " + searchFilter.Highlight(pm.skill.LabelCap));
+                    GUI.color = Color.white;
+                    Widgets.Label(new Rect(r.width * 0.4f + 20f, r.y, r.width * 0.6f - 20f, r.height), label);
                     curY += 22f;
                 }
                 curY += 10f;
             }
 
-            // Stats
-            if (cachedStats.Any())
+            // Stats with Multi-level hierarchy
+            if (cachedStatCategories.Any())
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_StatModifiers".Translate() + "</b>");
                 curY += 24f;
-                foreach (var ss in cachedStats)
+                foreach (var cat in cachedStatCategories)
                 {
-                    string valueStr = "";
-                    if (ss.FinalOffset != 0) valueStr += (ss.FinalOffset > 0 ? "+" : "") + ss.stat.ValueToString(ss.FinalOffset, ss.stat.toStringNumberSense);
-                    if (ss.FinalFactor != 1f)
+                    Widgets.Label(new Rect(15f, curY, viewRect.width - 15f, 24f), "<b>" + cat.First.LabelCap + "</b>");
+                    curY += 24f;
+                    foreach (var ss in cat.Second)
                     {
-                        if (!valueStr.NullOrEmpty()) valueStr += ", ";
-                        valueStr += "x" + ss.FinalFactor.ToStringPercent();
-                    }
+                        string valueStr = "";
+                        if (ss.FinalOffset != 0) valueStr += (ss.FinalOffset > 0 ? "+" : "") + ss.stat.ValueToString(ss.FinalOffset, ss.stat.toStringNumberSense);
+                        if (ss.FinalFactor != 1f)
+                        {
+                            if (!valueStr.NullOrEmpty()) valueStr += ", ";
+                            valueStr += "x" + ss.FinalFactor.ToStringPercent();
+                        }
 
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 26f), searchFilter.Highlight(ss.stat.LabelCap), valueStr, GetStatTooltip(ss));
-                    curY += 28f;
+                        DrawStatRow(new Rect(0f, curY, viewRect.width, 26f), searchFilter.Highlight(ss.stat.LabelCap), valueStr, GetStatTooltip(ss), 30f);
+                        curY += 28f;
+                    }
+                    curY += 5f;
                 }
                 curY += 10f;
             }
@@ -365,7 +398,7 @@ namespace XenotypeSummary
                         valStr += "max " + cs.FinalMax.Value.ToStringPercent();
                     }
 
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight(cs.capacity.LabelCap), valStr, GetCapacityTooltip(cs));
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight(cs.capacity.LabelCap), valStr, GetCapacityTooltip(cs), 15f);
                     curY += 26f;
                 }
                 curY += 10f;
@@ -378,7 +411,7 @@ namespace XenotypeSummary
                 curY += 24f;
                 foreach (var ds in cachedDamage)
                 {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight("XS_DamageUnit".Translate(ds.damageDef.LabelCap)), "x" + ds.FinalFactor.ToStringPercent(), ds.damageDef.description);
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight("XS_DamageUnit".Translate(ds.damageDef.LabelCap)), "x" + ds.FinalFactor.ToStringPercent(), ds.damageDef.description, 15f);
                     curY += 26f;
                 }
                 curY += 10f;
@@ -391,7 +424,7 @@ namespace XenotypeSummary
                 curY += 24f;
                 foreach (var line in cachedGlobalFactors)
                 {
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight(line.First), line.Second);
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), searchFilter.Highlight(line.First), line.Second, null, 15f);
                     curY += 26f;
                 }
                 curY += 10f;
@@ -406,12 +439,12 @@ namespace XenotypeSummary
                 {
                     if (chem.overdoseFactor != 1f)
                     {
-                        DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), "XS_OverdoseChance".Translate(chem.highlightedLabel), "x" + chem.overdoseFactor.ToStringPercent());
+                        DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), "XS_OverdoseChance".Translate(chem.highlightedLabel), "x" + chem.overdoseFactor.ToStringPercent(), null, 15f);
                         curY += 26f;
                     }
                     if (chem.toleranceFactor != 1f)
                     {
-                        DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), "XS_ToleranceBuildup".Translate(chem.highlightedLabel), "x" + chem.toleranceFactor.ToStringPercent());
+                        DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), "XS_ToleranceBuildup".Translate(chem.highlightedLabel), "x" + chem.toleranceFactor.ToStringPercent(), null, 15f);
                         curY += 26f;
                     }
                 }
@@ -423,11 +456,13 @@ namespace XenotypeSummary
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_SpecialEffects".Translate() + "</b>");
                 curY += 24f;
+                GUI.color = new Color(0.9f, 0.9f, 0.9f);
                 foreach (var effect in cachedSpecialEffects)
                 {
-                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + effect);
+                    Widgets.Label(new Rect(15f, curY, viewRect.width - 15f, 20f), " - " + effect);
                     curY += 20f;
                 }
+                GUI.color = Color.white;
                 curY += 10f;
             }
 
@@ -436,16 +471,18 @@ namespace XenotypeSummary
             {
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_NeedsAndConditions".Translate() + "</b>");
                 curY += 24f;
+                GUI.color = new Color(0.9f, 0.9f, 0.9f);
                 foreach (var n in cachedGainedNeeds)
                 {
-                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + searchFilter.Highlight("XS_AddsNeed".Translate(n.LabelCap)));
+                    Widgets.Label(new Rect(15f, curY, viewRect.width - 15f, 20f), " - " + searchFilter.Highlight("XS_AddsNeed".Translate(n.LabelCap)));
                     curY += 20f;
                 }
                 foreach (var n in cachedDisabledNeeds)
                 {
-                    Widgets.Label(new Rect(0f, curY, viewRect.width, 20f), " - " + searchFilter.Highlight("XS_DisablesNeed".Translate(n.LabelCap)));
+                    Widgets.Label(new Rect(15f, curY, viewRect.width - 15f, 20f), " - " + searchFilter.Highlight("XS_DisablesNeed".Translate(n.LabelCap)));
                     curY += 20f;
                 }
+                GUI.color = Color.white;
                 curY += 10f;
             }
 
@@ -509,7 +546,7 @@ namespace XenotypeSummary
                 Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), "<b>" + "XS_WorkLimitations".Translate() + "</b>");
                 curY += 24f;
                 string workLabel = summary.disabledWorkTags.LabelTranslated().CapitalizeFirst();
-                Widgets.Label(new Rect(0f, curY, viewRect.width, 24f), " - " + searchFilter.Highlight("XS_Disabled".Translate(workLabel)));
+                DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), " - " + searchFilter.Highlight("XS_Disabled".Translate(workLabel)), "", null, 15f);
                 curY += 26f;
                 curY += 10f;
             }
@@ -522,13 +559,13 @@ namespace XenotypeSummary
                 foreach (var def in cachedMoodThoughts)
                 {
                     float val = summary.moodEffects[def];
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), " - " + searchFilter.Highlight("XS_Required".Translate(def.LabelCap)), val.ToStringWithSign("0.##"), def.description);
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), " - " + searchFilter.Highlight("XS_Required".Translate(def.LabelCap)), val.ToStringWithSign("0.##"), def.description, 15f);
                     curY += 26f;
                 }
                 foreach (var def in cachedNullifiedThoughts)
                 {
                     string val = summary.nullifiedThoughts[def];
-                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), " - " + searchFilter.Highlight("XS_Removes".Translate(def.LabelCap)), val, def.description);
+                    DrawStatRow(new Rect(0f, curY, viewRect.width, 24f), " - " + searchFilter.Highlight("XS_Removes".Translate(def.LabelCap)), val, def.description, 15f);
                     curY += 26f;
                 }
                 curY += 10f;
@@ -537,10 +574,18 @@ namespace XenotypeSummary
             Widgets.EndScrollView();
         }
 
-        private void DrawStatRow(Rect rect, string label, string value, string tooltip = null)
+        private void DrawStatRow(Rect rect, string label, string value, string tooltip = null, float indentation = 0f)
         {
             if (Mouse.IsOver(rect)) Widgets.DrawHighlight(rect);
-            Widgets.Label(rect.LeftPart(0.7f), label);
+
+
+            Rect labelRect = rect.LeftPart(0.7f);
+            labelRect.xMin += indentation;
+
+            GUI.color = new Color(0.9f, 0.9f, 0.9f);
+            Widgets.Label(labelRect, label);
+            GUI.color = Color.white;
+
             Widgets.Label(rect.RightPart(0.3f), value);
             if (!tooltip.NullOrEmpty()) TooltipHandler.TipRegion(rect, tooltip);
         }

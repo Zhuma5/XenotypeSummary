@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <LanguageData>
   <XS_Summary>Summary...</XS_Summary>
+  <XS_SummaryShort>Summary</XS_SummaryShort>
   <XS_XenotypeSummary>Xenotype Summary</XS_XenotypeSummary>
   <XS_Xenotype>Xenotype</XS_Xenotype>
   <XS_SummaryOf>{0} Summary</XS_SummaryOf>

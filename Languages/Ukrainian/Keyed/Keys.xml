@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<LanguageData>
+  <XS_Summary>Підсумок...</XS_Summary>
+  <XS_SummaryShort>Підсумок</XS_SummaryShort>
+  <XS_XenotypeSummary>Підсумок ксенотипу</XS_XenotypeSummary>
+  <XS_Xenotype>Ксенотип</XS_Xenotype>
+  <XS_SummaryOf>Підсумок {0}</XS_SummaryOf>
+  <XS_SelectedGenesSummary>Підсумок вибраних генів</XS_SelectedGenesSummary>
+  <XS_Suppressed>Пригнічено</XS_Suppressed>
+  <XS_Aptitudes>Здібності</XS_Aptitudes>
+  <XS_Passions>Захоплення</XS_Passions>
+  <XS_PassionAdd>Додає один рівень захоплення</XS_PassionAdd>
+  <XS_PassionRemove>Видаляє всі захоплення</XS_PassionRemove>
+  <XS_StatModifiers>Модифікатори характеристик</XS_StatModifiers>
+  <XS_Capacities>Можливості</XS_Capacities>
+  <XS_DamageFactors>Множники шкоди</XS_DamageFactors>
+  <XS_DamageUnit>Шкода {0}</XS_DamageUnit>
+  <XS_PainOffset>Зміщення болю</XS_PainOffset>
+  <XS_PainFactor>Множник болю</XS_PainFactor>
+  <XS_FoodPoisoningChance>Шанс харчового отруєння</XS_FoodPoisoningChance>
+  <XS_SocialFightChance>Шанс соціальної бійки</XS_SocialFightChance>
+  <XS_AggroMentalBreakChance>Шанс агресивного нервового зриву</XS_AggroMentalBreakChance>
+  <XS_PrisonBreakChance>Шанс втечі з в'язниці</XS_PrisonBreakChance>
+  <XS_RomanceChance>Шанс на романтику</XS_RomanceChance>
+  <XS_LovinMTB>Частота близькості (MTB)</XS_LovinMTB>
+  <XS_DailyResourceLoss>Щоденна втрата ресурсів</XS_DailyResourceLoss>
+  <XS_GlobalFactors>Глобальні фактори</XS_GlobalFactors>
+  <XS_ChemicalEffects>Хімічні ефекти</XS_ChemicalEffects>
+  <XS_OverdoseChance>{0}: шанс передозування</XS_OverdoseChance>
+  <XS_ToleranceBuildup>{0}: накопичення толерантності</XS_ToleranceBuildup>
+  <XS_SpecialEffects>Особливі ефекти / Імунітети</XS_SpecialEffects>
+  <XS_ToxGasImmunity>Імунітет до токсичного газу</XS_ToxGasImmunity>
+  <XS_VacuumBurnImmunity>Імунітет до опіків вакууму</XS_VacuumBurnImmunity>
+  <XS_IgnoreDarkness>Нечутливість до темряви</XS_IgnoreDarkness>
+  <XS_Sterilized>Стерилізовано</XS_Sterilized>
+  <XS_PreventPermanentWounds>Запобігає постійним ранам</XS_PreventPermanentWounds>
+  <XS_DontMindRawFood>Не проти сирої їжі</XS_DontMindRawFood>
+  <XS_ImmuneTo>Імунітет до: {0}</XS_ImmuneTo>
+  <XS_CausesImmunityTo>Спричиняє імунітет до: {0}</XS_CausesImmunityTo>
+  <XS_NeedsAndConditions>Потреби та умови</XS_NeedsAndConditions>
+  <XS_AddsNeed>Додає потребу: {0}</XS_AddsNeed>
+  <XS_DisablesNeed>Відключає потребу: {0}</XS_DisablesNeed>
+  <XS_GainedAbilities>Отримані здібності</XS_GainedAbilities>
+  <XS_Traits>Риси</XS_Traits>
+  <XS_Forced>Примусово: {0}</XS_Forced>
+  <XS_SuppressedTrait>Пригнічено: {0}</XS_SuppressedTrait>
+  <XS_WorkLimitations>Обмеження роботи</XS_WorkLimitations>
+  <XS_Disabled>Відключено: {0}</XS_Disabled>
+  <XS_MoodAndThoughts>Настрій та думки</XS_MoodAndThoughts>
+  <XS_Required>Необхідно: {0}</XS_Required>
+  <XS_Removes>Видаляє: {0}</XS_Removes>
+  <XS_Effects>Ефекти</XS_Effects>
+</LanguageData>
