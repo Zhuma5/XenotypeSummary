@@ -1,5 +1,7 @@
 _PublisherPlus.xml
-/Artwork
+# /Artwork
 /Source/obj
 *.md
 *.zip
+Artwork/*.kra~
+Artwork/*.kra
